@@ -1,12 +1,10 @@
 {
+  "functions": {
+    "api/audit-logs.mjs": { "maxDuration": 10 },
+    "api/health.mjs": { "maxDuration": 10 }
+  },
   "rewrites": [
-    {
-      "source": "/api/webhooks/whatsapp",
-      "destination": "/api/broadcasts?webhook=whatsapp"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/audit-logs", "destination": "/api/audit-logs.mjs" },
+    { "source": "/api/health", "destination": "/api/health.mjs" }
   ]
 }
