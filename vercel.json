@@ -2,7 +2,6 @@
   "rewrites": [
     { "source": "/api/health", "destination": "/api/monitoring" },
     { "source": "/api/audit-logs", "destination": "/api/monitoring" },
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
