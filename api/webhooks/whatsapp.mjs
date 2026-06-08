@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   // Recebimento de mensagens (POST)
   if (req.method === 'POST') {
-    res.status(200).end() // Responde imediatamente para a Meta
+    res.status(200).end()
 
     try {
       const body = req.body
@@ -27,14 +27,12 @@ export default async function handler(req, res) {
         for (const change of entry.changes || []) {
           const value = change.value
 
-          // Processa mensagens recebidas
           if (value?.messages) {
             for (const msg of value.messages) {
               await processIncomingMessage(msg, value)
             }
           }
 
-          // Atualiza status de entregas (lido, entregue, etc.)
           if (value?.statuses) {
             for (const status of value.statuses) {
               await recordWhatsAppWebhookEvent({
@@ -59,15 +57,22 @@ export default async function handler(req, res) {
 }
 
 async function processIncomingMessage(msg, value) {
-  const from = msg.from // número do cliente ex: 5571999999999
+  const from = msg.from
   const type = msg.type
   const contact = value.contacts?.[0]
   const contactName = contact?.profile?.name || from
-  const now = new Date()
-  const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  const isoStr = now.toISOString()
 
-  // Extrai o texto conforme o tipo da mensagem
+  // Hora no fuso de Brasília
+  const nowUtc = new Date()
+  const nowBrasilia = new Date(nowUtc.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+
+  const pad = (n) => String(n).padStart(2, '0')
+  const timeStr = `${pad(nowBrasilia.getHours())}:${pad(nowBrasilia.getMinutes())}`
+  const dateStr = `${nowBrasilia.getFullYear()}-${pad(nowBrasilia.getMonth() + 1)}-${pad(nowBrasilia.getDate())}`
+  const createdAtStr = `${dateStr}T${timeStr}:00`
+  const isoStr = nowUtc.toISOString()
+
+  // Extrai texto conforme tipo
   let text = ''
   if (type === 'text') {
     text = msg.text?.body || ''
@@ -80,4 +85,56 @@ async function processIncomingMessage(msg, value) {
   } else if (type === 'video') {
     text = '🎥 Vídeo recebido'
   } else {
-    text = `Mensagem do
+    text = `Mensagem do tipo: ${type}`
+  }
+
+  console.log(`📨 Mensagem de ${contactName} (${from}): ${text}`)
+
+  await recordWhatsAppWebhookEvent({
+    eventType: 'message_received',
+    providerMessageId: msg.id,
+    recipient: from,
+    status: 'received',
+    payload: msg,
+  })
+
+  await ensureDatabase()
+  const pool = getPool()
+
+  const existing = await pool.query(
+    `SELECT id FROM conversations WHERE phone = $1 AND channel = 'whatsapp' ORDER BY id DESC LIMIT 1`,
+    [`+${from}`]
+  )
+
+  let conversationId
+
+  if (existing.rows.length > 0) {
+    conversationId = existing.rows[0].id
+    await pool.query(
+      `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
+      [timeStr, isoStr, conversationId]
+    )
+  } else {
+    const inserted = await pool.query(
+      `INSERT INTO conversations
+        (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, scheduled_at, next_action)
+       VALUES ($1, $2, $3, $4, 'whatsapp', $5, 'em_atendimento', 'normal', 'Bot', $6, $7, NULL, '')
+       RETURNING id`,
+      [
+        contactName,
+        '',
+        `+${from}`,
+        '',
+        `WhatsApp: ${text.substring(0, 50)}`,
+        timeStr,
+        createdAtStr,
+      ]
+    )
+    conversationId = inserted.rows[0].id
+  }
+
+  await pool.query(
+    `INSERT INTO messages (conversation_id, author, text, time) VALUES ($1, 'client', $2, $3)`,
+    [conversationId, text, timeStr]
+  )
+}
