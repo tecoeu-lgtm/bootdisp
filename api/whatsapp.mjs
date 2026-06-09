@@ -3,10 +3,43 @@ import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from './_db.mjs'
 export default async function handler(req, res) {
 
   // Verificação do webhook (GET)
-  if (req.method === 'GET') {
-    const mode = req.query['hub.mode']
-    const token = req.query['hub.verify_token']
-    const challenge = req.query['hub.challenge']
+  if (req.method === 'POST') {
+  try {
+    const body = req.body
+    if (body.object !== 'whatsapp_business_account') {
+      return res.status(200).end()
+    }
+
+    for (const entry of body.entry || []) {
+      for (const change of entry.changes || []) {
+        const value = change.value
+
+        if (value?.messages) {
+          for (const msg of value.messages) {
+            await processIncomingMessage(msg, value)
+          }
+        }
+
+        if (value?.statuses) {
+          for (const status of value.statuses) {
+            await recordWhatsAppWebhookEvent({
+              eventType: 'status_update',
+              providerMessageId: status.id,
+              recipient: status.recipient_id,
+              status: status.status,
+              payload: status,
+            })
+          }
+        }
+      }
+    }
+
+    return res.status(200).end() // ← MOVE para aqui, depois do processamento
+  } catch (err) {
+    console.error('Erro webhook WhatsApp:', err.message)
+    return res.status(200).end()
+  }
+}
 
     if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
       console.log('✅ Webhook verificado')
