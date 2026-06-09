@@ -103,12 +103,20 @@ async function processIncomingMessage(msg, value) {
     [`+${from}`]
   )
 
-  let conversationId
-
   if (existing.rows.length > 0) {
     conversationId = existing.rows[0].id
+    
+    // ✨ CORREÇÃO: Agora atualizamos o 'subject' com o texto da nova mensagem ou da mídia!
     await pool.query(
-      `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
+      `UPDATE conversations 
+       SET last_update = $1, 
+           updated_at = $2, 
+           subject = $3,
+           version = version + 1 
+       WHERE id = $4`,
+      [timeStr, isoStr, `WhatsApp: ${text.substring(0, 50)}`, conversationId]
+    )
+  } else {
       [timeStr, isoStr, conversationId]
     )
   } else {
