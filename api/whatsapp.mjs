@@ -1,4 +1,27 @@
-import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from './_db.mjs'
+export default async function handler(req, res) {
+
+  // Verificação do webhook (GET)
+  if (req.method === 'GET') {
+    const mode = req.query['hub.mode']
+    const token = req.query['hub.verify_token']
+    const challenge = req.query['hub.challenge']
+
+    if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+      console.log('✅ Webhook verificado')
+      return res.status(200).send(challenge)
+    }
+    return res.status(403).json({ error: 'Token de verificacao invalido.' })
+  }
+
+  if (req.method === 'POST') {
+    try {
+      const { ensureDatabase, getPool, recordWhatsAppWebhookEvent } = await import('./_db.mjs')
+      
+      const body = req.body
+      if (body.object !== 'whatsapp_business_account') {
+        return res.status(200).end()
+      }
+      // ... resto do código
 
 export default async function handler(req, res) {
 
