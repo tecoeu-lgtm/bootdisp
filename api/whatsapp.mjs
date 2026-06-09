@@ -1,6 +1,7 @@
+import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from './_db.mjs'
+
 export default async function handler(req, res) {
 
-  // Verificação do webhook (GET)
   if (req.method === 'GET') {
     const mode = req.query['hub.mode']
     const token = req.query['hub.verify_token']
@@ -15,69 +16,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const { ensureDatabase, getPool, recordWhatsAppWebhookEvent } = await import('./_db.mjs')
-      
       const body = req.body
       if (body.object !== 'whatsapp_business_account') {
         return res.status(200).end()
       }
-      // ... resto do código
-
-export default async function handler(req, res) {
-
-  // Verificação do webhook (GET)
-  if (req.method === 'POST') {
-  try {
-    const body = req.body
-    if (body.object !== 'whatsapp_business_account') {
-      return res.status(200).end()
-    }
-
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        const value = change.value
-
-        if (value?.messages) {
-          for (const msg of value.messages) {
-            await processIncomingMessage(msg, value)
-          }
-        }
-
-        if (value?.statuses) {
-          for (const status of value.statuses) {
-            await recordWhatsAppWebhookEvent({
-              eventType: 'status_update',
-              providerMessageId: status.id,
-              recipient: status.recipient_id,
-              status: status.status,
-              payload: status,
-            })
-          }
-        }
-      }
-    }
-
-    return res.status(200).end() // ← MOVE para aqui, depois do processamento
-  } catch (err) {
-    console.error('Erro webhook WhatsApp:', err.message)
-    return res.status(200).end()
-  }
-}
-
-    if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
-      console.log('✅ Webhook verificado')
-      return res.status(200).send(challenge)
-    }
-    return res.status(403).json({ error: 'Token de verificacao invalido.' })
-  }
-
-  // Recebimento de mensagens (POST)
-  if (req.method === 'POST') {
-    res.status(200).end()
-
-    try {
-      const body = req.body
-      if (body.object !== 'whatsapp_business_account') return
 
       for (const entry of body.entry || []) {
         for (const change of entry.changes || []) {
@@ -102,11 +44,12 @@ export default async function handler(req, res) {
           }
         }
       }
+
+      return res.status(200).end()
     } catch (err) {
       console.error('Erro webhook WhatsApp:', err.message)
+      return res.status(200).end()
     }
-
-    return
   }
 
   res.status(405).end()
@@ -118,7 +61,6 @@ async function processIncomingMessage(msg, value) {
   const contact = value.contacts?.[0]
   const contactName = contact?.profile?.name || from
 
-  // Hora no fuso de Brasília
   const nowUtc = new Date()
   const nowBrasilia = new Date(nowUtc.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
 
@@ -128,7 +70,6 @@ async function processIncomingMessage(msg, value) {
   const createdAtStr = `${dateStr}T${timeStr}:00`
   const isoStr = nowUtc.toISOString()
 
-  // Extrai texto conforme tipo
   let text = ''
   if (type === 'text') {
     text = msg.text?.body || ''
@@ -163,34 +104,3 @@ async function processIncomingMessage(msg, value) {
   )
 
   let conversationId
-
-  if (existing.rows.length > 0) {
-    conversationId = existing.rows[0].id
-    await pool.query(
-      `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
-      [timeStr, isoStr, conversationId]
-    )
-  } else {
-    const inserted = await pool.query(
-      `INSERT INTO conversations
-        (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, scheduled_at, next_action)
-       VALUES ($1, $2, $3, $4, 'whatsapp', $5, 'em_atendimento', 'normal', 'Bot', $6, $7, NULL, '')
-       RETURNING id`,
-      [
-        contactName,
-        '',
-        `+${from}`,
-        '',
-        `WhatsApp: ${text.substring(0, 50)}`,
-        timeStr,
-        createdAtStr,
-      ]
-    )
-    conversationId = inserted.rows[0].id
-  }
-
-  await pool.query(
-    `INSERT INTO messages (conversation_id, author, text, time) VALUES ($1, 'client', $2, $3)`,
-    [conversationId, text, timeStr]
-  )
-}
