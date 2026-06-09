@@ -1,7 +1,6 @@
 import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from './_db.mjs'
 
 export default async function handler(req, res) {
-
   if (req.method === 'GET') {
     const mode = req.query['hub.mode']
     const token = req.query['hub.verify_token']
@@ -14,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Token de verificacao invalido.' })
   }
 
- if (req.method === 'POST') {
+  if (req.method === 'POST') {
     try {
       const body = req.body
       if (body.object !== 'whatsapp_business_account') {
@@ -25,19 +24,16 @@ export default async function handler(req, res) {
         for (const change of entry.changes || []) {
           const value = change.value
 
-          // 1. Processamento de Mensagens Recebidas
           if (value?.messages) {
             for (const msg of value.messages) {
               try {
                 await processIncomingMessage(msg, value)
               } catch (msgErr) {
-                console.error('❌ ERRO CRÍTICO EM processIncomingMessage:', msgErr.message, msgErr.stack)
-                // Não deixa quebrar o loop, tenta continuar
+                console.error('❌ ERRO EM processIncomingMessage:', msgErr.message)
               }
             }
           }
 
-          // 2. Processamento de Atualizações de Status
           if (value?.statuses) {
             for (const status of value.statuses) {
               try {
@@ -49,7 +45,7 @@ export default async function handler(req, res) {
                   payload: status,
                 })
               } catch (statusErr) {
-                console.error('❌ ERRO CRÍTICO EM recordWhatsAppWebhookEvent:', statusErr.message, statusErr.stack)
+                console.error('❌ ERRO EM recordWhatsAppWebhookEvent:', statusErr.message)
               }
             }
           }
@@ -58,15 +54,15 @@ export default async function handler(req, res) {
 
       return res.status(200).end()
     } catch (err) {
-      console.error('❌ Erro geral no Webhook WhatsApp:', err.message, err.stack)
-      return res.status(200).end() // Retorna 200 para o WhatsApp parar de bombardear a rota
+      console.error('❌ Erro geral no Webhook WhatsApp:', err.message)
+      return res.status(200).end()
     }
   }
-        }
-      }
 
-      return res.status(200).end()
- async function processIncomingMessage(msg, value) {
+  res.status(405).end()
+}
+
+async function processIncomingMessage(msg, value) {
   const from = msg.from
   const type = msg.type
   const contact = value.contacts?.[0]
@@ -120,13 +116,13 @@ export default async function handler(req, res) {
   if (existing.rows.length > 0) {
     conversationId = existing.rows[0].id
     
-    // UPDATE Seguro: Mantém o padrão original que funcionava, mas atualiza os timestamps corretamente
+    // UPDATE Seguro original (sem mexer na coluna subject para evitar erros de banco)
     await pool.query(
       `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
       [timeStr, isoStr, conversationId]
     )
   } else {
-    // INSERT Corrigido: Alinhamento exato de colunas e parâmetros ($1 a $6)
+    // INSERT Corrigido com alinhamento de parâmetros
     const inserted = await pool.query(
       `INSERT INTO conversations
         (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, next_action)
@@ -137,7 +133,7 @@ export default async function handler(req, res) {
     conversationId = inserted.rows[0].id
   }
 
-  // Insere a mensagem na tabela de mensagens (onde o texto do arquivo VAI aparecer no chat)
+  // Insere na tabela de mensagens (onde o texto da imagem/documento vai aparecer na tela)
   await pool.query(
     `INSERT INTO messages (conversation_id, author, text, time) VALUES ($1, 'client', $2, $3)`,
     [conversationId, text, timeStr]
