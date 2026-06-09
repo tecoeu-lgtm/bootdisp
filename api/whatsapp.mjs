@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Token de verificacao invalido.' })
   }
 
-  if (req.method === 'POST') {
+ if (req.method === 'POST') {
     try {
       const body = req.body
       if (body.object !== 'whatsapp_business_account') {
@@ -25,23 +25,43 @@ export default async function handler(req, res) {
         for (const change of entry.changes || []) {
           const value = change.value
 
+          // 1. Processamento de Mensagens Recebidas
           if (value?.messages) {
             for (const msg of value.messages) {
-              await processIncomingMessage(msg, value)
+              try {
+                await processIncomingMessage(msg, value)
+              } catch (msgErr) {
+                console.error('❌ ERRO CRÍTICO EM processIncomingMessage:', msgErr.message, msgErr.stack)
+                // Não deixa quebrar o loop, tenta continuar
+              }
             }
           }
 
+          // 2. Processamento de Atualizações de Status
           if (value?.statuses) {
             for (const status of value.statuses) {
-              await recordWhatsAppWebhookEvent({
-                eventType: 'status_update',
-                providerMessageId: status.id,
-                recipient: status.recipient_id,
-                status: status.status,
-                payload: status,
-              })
+              try {
+                await recordWhatsAppWebhookEvent({
+                  eventType: 'status_update',
+                  providerMessageId: status.id,
+                  recipient: status.recipient_id,
+                  status: status.status,
+                  payload: status,
+                })
+              } catch (statusErr) {
+                console.error('❌ ERRO CRÍTICO EM recordWhatsAppWebhookEvent:', statusErr.message, statusErr.stack)
+              }
             }
           }
+        }
+      }
+
+      return res.status(200).end()
+    } catch (err) {
+      console.error('❌ Erro geral no Webhook WhatsApp:', err.message, err.stack)
+      return res.status(200).end() // Retorna 200 para o WhatsApp parar de bombardear a rota
+    }
+  }
         }
       }
 
