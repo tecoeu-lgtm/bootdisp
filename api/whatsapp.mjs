@@ -104,3 +104,26 @@ async function processIncomingMessage(msg, value) {
   )
 
   let conversationId
+
+  if (existing.rows.length > 0) {
+    conversationId = existing.rows[0].id
+    await pool.query(
+      `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
+      [timeStr, isoStr, conversationId]
+    )
+  } else {
+    const inserted = await pool.query(
+      `INSERT INTO conversations
+        (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, scheduled_at, next_action)
+       VALUES ($1, $2, $3, $4, 'whatsapp', $5, 'em_atendimento', 'normal', 'Bot', $6, $7, NULL, '')
+       RETURNING id`,
+      [contactName, '', `+${from}`, '', `WhatsApp: ${text.substring(0, 50)}`, timeStr, createdAtStr]
+    )
+    conversationId = inserted.rows[0].id
+  }
+
+  await pool.query(
+    `INSERT INTO messages (conversation_id, author, text, time) VALUES ($1, 'client', $2, $3)`,
+    [conversationId, text, timeStr]
+  )
+}
