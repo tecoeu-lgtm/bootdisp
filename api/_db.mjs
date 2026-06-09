@@ -277,17 +277,27 @@ export function getPool() {
   requireDatabaseUrl()
 
   if (!pool) {
-    const isLocalhost = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1')
-    
+    // Remove qualquer parâmetro de query da string que possa forçar um SSL incorreto
+    const cleanUrl = process.env.DATABASE_URL.split('?')[0]
+    const isLocalhost = cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1')
+
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: isLocalhost ? false : { rejectUnauthorized: false },
+      connectionString: cleanUrl,
+      // Configurações para evitar travamentos de Timeout:
+      connectionTimeoutMillis: 5000, // Desiste após 5 segundos se o banco não responder
+      idleTimeoutMillis: 10000,       // Fecha conexões inativas após 10 segundos
+      max: 10,                        // Limite máximo de conexões simultâneas
+      ssl: isLocalhost ? false : { rejectUnauthorized: false }
+    })
+
+    // Captura erros silenciosos no Pool para expor no log da Vercel
+    pool.on('error', (err) => {
+      console.error('❌ Erro inesperado no Pool do PostgreSQL:', err)
     })
   }
 
   return pool
-}
-export async function ensureDatabase() {
+}export async function ensureDatabase() {
   if (!ready) {
     ready = setupDatabase()
   }
