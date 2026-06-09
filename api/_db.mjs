@@ -972,7 +972,7 @@ export async function saveCompanySettings(profile = {}, user, request) {
     address: String(profile.address || '').trim(),
     city: String(profile.city || '').trim(),
     state: String(profile.state || '').trim(),
-    zipCode: String(profile.zipCode || '').trim(),
+   zipCode: String(profile.zipCode || '').trim(),
     logoDataUrl: String(profile.logoDataUrl || '').startsWith('data:image/') ? String(profile.logoDataUrl) : '',
   }
 
@@ -994,99 +994,9 @@ export async function saveCompanySettings(profile = {}, user, request) {
     user,
     action: 'company_settings_updated',
     entity: 'system',
-    summary: `Cadastro da empresa atualizado: ${normalizedProfile.tradeName || normalizedProfile.name || 'sem nome'}.`,
-    metadata: {
-      name: normalizedProfile.name,
-      tradeName: normalizedProfile.tradeName,
-      document: normalizedProfile.document,
-      hasLogo: Boolean(normalizedProfile.logoDataUrl),
-    },
+    summary: `Perfil da empresa atualizado: ${normalizedProfile.tradeName}.`,
+    metadata: { profile: { name: normalizedProfile.name, document: normalizedProfile.document } },
   })
 
   return getCompanySettings()
-}
-
-export async function registerSystem(registrationKey, user, request) {
-  await ensureDatabase()
-
-  const expectedKey = process.env.SYSTEM_REGISTRATION_KEY
-
-  if (!expectedKey) {
-    const error = new Error('Chave de registro nao configurada no ambiente.')
-    error.status = 503
-    throw error
-  }
-
-  if (!safeEqualText(String(registrationKey || '').trim(), expectedKey.trim())) {
-    await logAudit({
-      request,
-      user,
-      action: 'system_registration_failed',
-      entity: 'system',
-      summary: 'Tentativa de registro do sistema recusada.',
-    })
-
-    const error = new Error('Chave de registro invalida.')
-    error.status = 403
-    throw error
-  }
-
-  const fingerprint = createHash('sha256').update(expectedKey).digest('hex').slice(0, 16).toUpperCase()
-
-  await getPool().query(
-    `
-      INSERT INTO system_registration (id, key_fingerprint, registered_by, registered_by_email, registered_at)
-      VALUES (1, $1, $2, $3, $4)
-      ON CONFLICT (id) DO UPDATE SET
-        key_fingerprint = EXCLUDED.key_fingerprint,
-        registered_by = EXCLUDED.registered_by,
-        registered_by_email = EXCLUDED.registered_by_email,
-        registered_at = EXCLUDED.registered_at
-    `,
-    [fingerprint, user.id, user.email, new Date().toISOString()],
-  )
-
-  await logAudit({
-    request,
-    user,
-    action: 'system_registered',
-    entity: 'system',
-    summary: 'Sistema registrado com chave valida.',
-    metadata: { fingerprint },
-  })
-
-  return getSystemStatus()
-}
-
-export async function logAudit({ request, user, action, entity, entityId = null, summary, metadata = {} }) {
-  await ensureDatabase()
-
-  const requestMeta = request ? getRequestMeta(request) : {}
-
-  await getPool().query(
-    `
-      INSERT INTO audit_logs (
-        user_id, user_name, user_email, action, entity, entity_id, summary,
-        metadata, ip_address, user_agent, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
-    `,
-    [
-      user?.id ?? null,
-      user?.name ?? null,
-      user?.email ?? null,
-      action,
-      entity,
-      entityId ? String(entityId) : null,
-      summary,
-      JSON.stringify(metadata),
-      requestMeta.ip ?? null,
-      requestMeta.userAgent ?? null,
-      new Date().toISOString(),
-    ],
-  )
-}
-
-export async function handleApiError(response, error) {
-  const status = error?.status ?? 500
-  sendJson(response, status, { error: error instanceof Error ? error.message : 'Erro interno.' })
 }
