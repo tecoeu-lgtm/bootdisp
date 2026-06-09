@@ -46,16 +46,7 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).end()
-    } catch (err) {
-      console.error('Erro webhook WhatsApp:', err.message)
-      return res.status(200).end()
-    }
-  }
-
-  res.status(405).end()
-}
-
-async function processIncomingMessage(msg, value) {
+ async function processIncomingMessage(msg, value) {
   const from = msg.from
   const type = msg.type
   const contact = value.contacts?.[0]
@@ -103,33 +94,30 @@ async function processIncomingMessage(msg, value) {
     [`+${from}`]
   )
 
+  let conversationId
+  const safeText = String(text).substring(0, 50)
+
   if (existing.rows.length > 0) {
     conversationId = existing.rows[0].id
     
-    // ✨ CORREÇÃO: Agora atualizamos o 'subject' com o texto da nova mensagem ou da mídia!
+    // UPDATE Seguro: Mantém o padrão original que funcionava, mas atualiza os timestamps corretamente
     await pool.query(
-      `UPDATE conversations 
-       SET last_update = $1, 
-           updated_at = $2, 
-           subject = $3,
-           version = version + 1 
-       WHERE id = $4`,
-      [timeStr, isoStr, `WhatsApp: ${text.substring(0, 50)}`, conversationId]
-    )
-  } else {
+      `UPDATE conversations SET last_update = $1, updated_at = $2, version = version + 1 WHERE id = $3`,
       [timeStr, isoStr, conversationId]
     )
   } else {
+    // INSERT Corrigido: Alinhamento exato de colunas e parâmetros ($1 a $6)
     const inserted = await pool.query(
       `INSERT INTO conversations
-        (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, scheduled_at, next_action)
-       VALUES ($1, $2, $3, $4, 'whatsapp', $5, 'em_atendimento', 'normal', 'Bot', $6, $7, NULL, '')
+        (contact, company, phone, email, channel, subject, status, priority, responsible, last_update, created_at, next_action)
+       VALUES ($1, $2, $3, $4, 'whatsapp', $5, 'em_atendimento', 'normal', 'Bot', $6, $7, '')
        RETURNING id`,
-      [contactName, '', `+${from}`, '', `WhatsApp: ${text.substring(0, 50)}`, timeStr, createdAtStr]
+      [contactName, '', `+${from}`, '', `WhatsApp: ${safeText}`, timeStr, createdAtStr]
     )
     conversationId = inserted.rows[0].id
   }
 
+  // Insere a mensagem na tabela de mensagens (onde o texto do arquivo VAI aparecer no chat)
   await pool.query(
     `INSERT INTO messages (conversation_id, author, text, time) VALUES ($1, 'client', $2, $3)`,
     [conversationId, text, timeStr]
