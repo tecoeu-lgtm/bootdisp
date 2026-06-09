@@ -1,4 +1,4 @@
-import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from '../_db.mjs'
+import { ensureDatabase, getPool, recordWhatsAppWebhookEvent } from './_db.mjs'
 
 export default async function handler(req, res) {
 
