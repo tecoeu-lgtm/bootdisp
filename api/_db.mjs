@@ -277,15 +277,16 @@ export function getPool() {
   requireDatabaseUrl()
 
   if (!pool) {
+    const isLocalhost = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1')
+    
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
+      ssl: isLocalhost ? false : { rejectUnauthorized: false },
     })
   }
 
   return pool
 }
-
 export async function ensureDatabase() {
   if (!ready) {
     ready = setupDatabase()
